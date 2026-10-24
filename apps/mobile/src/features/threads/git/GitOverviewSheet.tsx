@@ -50,6 +50,7 @@ import {
   useLinkedPullRequestLines,
 } from "../LinkedPullRequestList";
 import { useLinkedPullRequestActions } from "../useLinkedPullRequestActions";
+import { ThreadAutomationsSection } from "../ThreadAutomationsSection";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -80,8 +81,12 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   const isInspector = presentation === "inspector";
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
-  const { selectedThread, selectedThreadProject, selectedEnvironmentRuntime } =
-    useThreadSelection();
+  const {
+    selectedThread,
+    selectedThreadProject,
+    selectedEnvironmentConnection,
+    selectedEnvironmentRuntime,
+  } = useThreadSelection();
   const openPullRequest = useOpenPullRequest({
     replace: presentation === "sheet",
     context: selectedThread ?? undefined,
@@ -326,6 +331,12 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
           ))}
         </ListSection>
       ) : null}
+
+      <ThreadAutomationsSection
+        environmentId={environmentId}
+        environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? "Environment"}
+        threadId={threadId}
+      />
 
       {currentWorktreePath ? (
         <ListSection title="Worktree">
