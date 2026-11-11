@@ -703,6 +703,61 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
     }),
   );
 
+  it.effect("delivers a completion to a settled parent without un-settling it", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:delegated-delivery-settled-parent");
+      const runId = RunId.make("run:delegated-delivery-settled-parent");
+      const taskId = NodeId.make("node:delegated-delivery-settled-parent-task");
+      const messageId = MessageId.make(`message:delegated-delivery:${threadId}`);
+
+      yield* seedParentWithTerminalTask({
+        threadId,
+        projectId: ProjectId.make("project:delegated-delivery-settled-parent"),
+        runId,
+        rootNodeId: NodeId.make("node:delegated-delivery-settled-parent-root"),
+        taskId,
+        deliveryState: "claimed",
+        completionWake: "always",
+        deliveryTaskIds: [taskId],
+        parentRunStatus: "completed",
+        now,
+      });
+      const { thread } = yield* orchestrator.getThreadProjection(threadId);
+      yield* eventSink.write({
+        commandId: CommandId.make("command:delegated-delivery-settled-parent-settle"),
+        events: [
+          {
+            id: EventId.make("event:delegated-delivery-settled-parent-settle"),
+            type: "thread.settled",
+            threadId,
+            occurredAt: now,
+            payload: { ...thread, settledOverride: "settled", settledAt: now },
+          },
+        ],
+      });
+
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("command:delegated-delivery-settled-parent"),
+        threadId,
+        messageId,
+        text: `Delegated task ${taskId} reached a terminal state.`,
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "server",
+        delegatedCompletion: { parentRunId: runId, generation: 1, taskIds: [taskId] },
+      });
+
+      const projection = yield* orchestrator.getThreadProjection(threadId);
+      assert.isTrue(projection.runs.some((run) => run.userMessageId === messageId));
+      assert.equal(projection.thread.settledOverride, "settled");
+    }),
+  );
+
   it.effect("counts already delivered siblings in the completion notice", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

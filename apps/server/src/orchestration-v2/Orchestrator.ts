@@ -6075,7 +6075,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         : run.id === command.restartContinuationOfRunId,
     )?.delegatedTaskId;
 
-    if (projection.thread.settledOverride !== null) {
+    // Background wakes and delegated completions continue work the user already snoozed, so
+    // only a message someone actually sent ends the snooze.
+    const automaticWake =
+      command.notification !== undefined || command.delegatedCompletion !== undefined;
+    // The same wakes, and scheduled runs, are delivered and run without taking a thread out of Settled.
+    const keepsSettled = automaticWake || command.scheduledTaskId !== undefined;
+    if (
+      projection.thread.settledOverride === "active" ||
+      (projection.thread.settledOverride === "settled" && !keepsSettled)
+    ) {
       const now = yield* DateTime.now;
       const thread: OrchestrationV2AppThread = {
         ...projection.thread,
@@ -6099,10 +6108,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
       projection = applyToProjection(projection, event);
     }
-    // Background wakes and delegated completions continue work the user already snoozed, so
-    // only a message someone actually sent ends the snooze.
-    const automaticWake =
-      command.notification !== undefined || command.delegatedCompletion !== undefined;
     if (projection.thread.snoozedUntil != null && !automaticWake) {
       const now = yield* DateTime.now;
       const thread: OrchestrationV2AppThread = {

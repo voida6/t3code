@@ -7847,6 +7847,69 @@ it.layer(layerTest)("snooze queued runs", (it) => {
         }
       }),
   );
+
+  it.effect.each(["notification", "scheduled", "user", "mcp"] as const)(
+    "a %s message on a settled thread un-settles it only when someone sent it",
+    (kind) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const threadId = ThreadId.make(`settle-wake:${kind}`);
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`create:${threadId}`),
+          threadId,
+          projectId: ProjectId.make("settle-wake-project"),
+          title: "Settled thread",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: "/tmp/settle-wake",
+          createdBy: "user",
+          creationSource: "web",
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.settle",
+          commandId: CommandId.make(`settle:${threadId}`),
+          threadId,
+        });
+        const messageId = MessageId.make(`wake:${threadId}`);
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`wake:${threadId}`),
+          threadId,
+          messageId,
+          text: "Continue",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "queue_after_active" },
+          createdBy: kind === "notification" ? "agent" : kind === "mcp" ? "agent" : "user",
+          creationSource: kind === "notification" ? "provider" : kind === "mcp" ? "mcp" : "web",
+          ...(kind === "notification"
+            ? {
+                notification: {
+                  source: { kind: "background_task" as const },
+                  outcome: "updated" as const,
+                  summary: "Background activity updated",
+                },
+              }
+            : {}),
+          ...(kind === "scheduled"
+            ? { scheduledTaskId: ScheduledTaskId.make("settle-wake-task") }
+            : {}),
+        });
+        const projection = yield* orchestrator.getThreadProjection(threadId);
+        assert.isTrue(projection.messages.some((message) => message.id === messageId));
+        assert.isTrue(projection.runs.some((run) => run.userMessageId === messageId));
+        if (kind === "user" || kind === "mcp") {
+          assert.isNull(projection.thread.settledOverride);
+          assert.isNull(projection.thread.settledAt);
+        } else {
+          assert.equal(projection.thread.settledOverride, "settled");
+          assert.isNotNull(projection.thread.settledAt);
+        }
+      }),
+  );
 });
 
 const SCRATCH_ROOT = "/tmp/runtime-layer-promotion-scratch";
